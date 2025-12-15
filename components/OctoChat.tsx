@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import firebase from 'firebase/app';
+import firebase from 'firebase/compat/app';
 import { RoomData, ChatMessage } from '../types';
 import { initializeOctoChat, sendMessageToOcto } from '../services/geminiService';
 import { Send, X } from 'lucide-react';

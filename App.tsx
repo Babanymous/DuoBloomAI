@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import firebase from 'firebase/app';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
 import { auth, db, GoogleAuthProvider } from './services/firebase';
 import { LogOut, Home, Play, Plus, ArrowRight, Globe, Download, Loader2, Share, Heart, PlusSquare, Castle, Store, CheckSquare, Flower2, ShoppingCart, Trash2, Check, Repeat, Calendar } from 'lucide-react';
 import OctoChat from './components/OctoChat';

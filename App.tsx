@@ -1,14 +1,36 @@
-
 import React, { useState, useEffect } from 'react';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import { auth, db, GoogleAuthProvider } from './services/firebase';
-import { LogOut, Home, Play, Plus, ArrowRight, Globe, Download, Loader2, Share, Heart, PlusSquare, Castle, Store, CheckSquare, Flower2, ShoppingCart, Trash2, Check, Repeat, Calendar } from 'lucide-react';
+import { LogOut, Home, Play, Plus, ArrowRight, Globe, Download, Loader2, Share, Heart, PlusSquare, Castle, Store, CheckSquare, Flower2, ShoppingCart, Trash2, Check, Repeat, Calendar, Sprout, CheckCircle } from 'lucide-react';
 import OctoChat from './components/OctoChat';
 import GridCell from './components/GridCell';
 import { RoomData, ITEMS, GARDEN_UPGRADES, Task, WATER_COOLDOWN } from './types';
 
-// --- SUB-COMPONENTS (Moved inside or kept here for simplicity due to file limit) ---
+// --- HELPER COMPONENTS ---
+
+const ItemDisplay = ({ item, className = "" }: { item: any, className?: string }) => {
+    const [hasError, setHasError] = useState(false);
+    if (!item) return null;
+    if (item.img && !hasError) {
+        return <img src={item.img} alt={item.name} className={`${className} object-contain drop-shadow-md`} onError={() => setHasError(true)} />;
+    }
+    return <span className={`flex items-center justify-center ${className} text-2xl`}>{item.icon || "•"}</span>;
+};
+
+const Modal = ({ children, onClose, title }: { children: React.ReactNode, onClose: () => void, title: string }) => (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-pop">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                <h3 className="font-bold text-lg text-gray-800">{title}</h3>
+                <button onClick={onClose}><span className="text-gray-500 hover:text-red-500 font-bold">X</span></button>
+            </div>
+            <div className="p-4 overflow-y-auto">{children}</div>
+        </div>
+    </div>
+);
+
+// --- SCREENS ---
 
 const LoginScreen = ({ onLogin }: { onLogin: () => void }) => (
     <div className="h-full flex flex-col items-center justify-center p-6 bg-gradient-to-b from-green-300 to-green-100 text-center">
@@ -20,339 +42,341 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => (
                 <span className="font-bold text-xl">G</span>
                 Mit Google anmelden
             </button>
-            <p className="text-xs text-gray-400 mt-6">Version 24.1 (React + Gemini 2.5)</p>
+            <p className="text-xs text-gray-400 mt-6">Version 24.1 (Vite + Gemini 2.5)</p>
         </div>
     </div>
 );
 
-const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: firebase.User, roomCode: string, isSpectator: boolean, onBackToMenu: () => void }) => {
-    const [roomData, setRoomData] = useState<RoomData | null>(null);
-    const [tab, setTab] = useState<'garden' | 'tasks' | 'shop'>('garden');
-    const [activeGardenIdx, setActiveGardenIdx] = useState(0);
-    const [selectedItem, setSelectedItem] = useState<string | null>(null);
-    const [now, setNow] = useState(Date.now());
-    const [hasLiked, setHasLiked] = useState(false);
+const CommunityList = ({ onVisit, onBack }: { onVisit: (id: string) => void, onBack: () => void }) => {
+    const [list, setList] = useState<RoomData[] & { id: string }[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // Data Sync
     useEffect(() => {
-        if(!roomCode || !db) return;
-        const unsub = db.collection('rooms').doc(roomCode).onSnapshot((snap) => {
-            if (snap.exists) {
-                const data = snap.data() as RoomData;
-                // Defaults
-                if(!data.tasks) data.tasks = [];
-                if(!data.inventory) data.inventory = {};
-                if(!data.gardens) data.gardens = { 0: {} };
-                if(!data.unlockedGardens) data.unlockedGardens = [0];
-                setRoomData(data);
-            } else if (isSpectator) { 
-                alert("Raum nicht gefunden."); 
-                onBackToMenu(); 
-            }
-        }, err => console.log("DB Error", err));
-
-        if (localStorage.getItem(`liked_${roomCode}`)) setHasLiked(true);
-        return () => unsub();
-    }, [roomCode, isSpectator, onBackToMenu]);
-
-    // Timer
-    useEffect(() => { 
-        const t = setInterval(() => setNow(Date.now()), 1000); 
-        return () => clearInterval(t); 
+        const fetchG = async () => {
+            try {
+                const snap = await db.collection('rooms').orderBy('likes', 'desc').limit(50).get();
+                const sorted = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+                setList(sorted);
+            } catch (e) { console.error(e); }
+            setLoading(false);
+        };
+        fetchG();
     }, []);
 
-    const handleGridClick = async (x: number, y: number) => {
-        if (isSpectator || !roomData) return;
-        const key = `${x},${y}`;
-        const currentGrid = roomData.gardens[activeGardenIdx] || {};
-        const cell = currentGrid[key] || {};
-        const roomRef = db.collection('rooms').doc(roomCode);
-        const path = `gardens.${activeGardenIdx}.${key}`;
-        const increment = firebase.firestore.FieldValue.increment;
-        const deleteField = firebase.firestore.FieldValue.delete;
+    return (
+        <div className="h-full bg-slate-50 flex flex-col md:max-w-4xl md:mx-auto md:my-8 md:rounded-3xl shadow-xl overflow-hidden">
+            <div className="p-6 bg-white shadow-sm flex items-center gap-4">
+                <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full"><Home className="text-gray-600" /></button>
+                <h2 className="text-2xl font-bold text-gray-800">Community Gärten</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                {loading && <div className="text-center p-8 text-gray-500"><Loader2 className="animate-spin inline mr-2"/> Lade Liste...</div>}
+                {list.map(g => (
+                    <div key={g.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition-shadow">
+                        <div>
+                            <div className="font-bold text-lg text-gray-800">{g.roomName || "Unbenannter Garten"}</div>
+                            <div className="text-sm text-gray-500 flex gap-3">
+                                <span className="text-red-500 flex items-center gap-1"><Heart size={12} fill="currentColor" /> {g.likes || 0}</span>
+                                <span>Level {g.unlockedGardens?.length || 1}</span>
+                            </div>
+                        </div>
+                        <button onClick={() => onVisit(g.id)} className="bg-purple-100 text-purple-700 px-4 py-2 rounded-xl font-bold hover:bg-purple-200">Besuchen</button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
-        // Planting/Placing
-        if (selectedItem) {
+const MainMenu = ({ user, onAction, currentRoom }: { user: firebase.User, onAction: (action: string, p?: any, p2?: any) => void, currentRoom: string | null }) => {
+    const [joinCode, setJoinCode] = useState("");
+    
+    return (
+        <div className="h-full flex flex-col items-center justify-center p-6 bg-slate-50 space-y-6">
+            <h1 className="text-3xl font-bold text-gray-800">Hallo, {user.displayName?.split(' ')[0]}! 👋</h1>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+                 <button onClick={() => onAction('create')} className="bg-white p-6 rounded-2xl shadow-sm border-2 border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50 transition-all flex flex-col items-center gap-4">
+                    <PlusSquare size={48} className="text-green-600" />
+                    <span className="font-bold text-lg text-gray-700">Neuen Garten anlegen</span>
+                </button>
+
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
+                    <h3 className="font-bold text-gray-700 flex items-center gap-2"><ArrowRight /> Garten beitreten</h3>
+                    <div className="flex gap-2">
+                        <input 
+                            value={joinCode}
+                            onChange={(e) => setJoinCode(e.target.value)}
+                            placeholder="Code eingeben..."
+                            className="flex-1 bg-gray-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-200"
+                        />
+                         <button onClick={() => onAction('join', joinCode)} disabled={!joinCode} className="bg-green-600 text-white p-2 rounded-lg hover:bg-green-700 disabled:opacity-50"><ArrowRight /></button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex gap-4">
+                 <button onClick={() => onAction('community')} className="flex items-center gap-2 text-gray-600 hover:text-purple-600 font-bold bg-white px-6 py-3 rounded-full shadow-sm"><Globe size={20} /> Community</button>
+                 <button onClick={() => auth.signOut()} className="flex items-center gap-2 text-red-400 hover:text-red-600 font-bold bg-white px-6 py-3 rounded-full shadow-sm"><LogOut size={20} /> Abmelden</button>
+            </div>
+            
+             {currentRoom && (
+                <div className="mt-8">
+                    <button onClick={() => onAction('enter', currentRoom)} className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-4 rounded-2xl font-bold text-xl shadow-lg hover:scale-105 transition-transform flex items-center gap-3">
+                        <Play fill="currentColor" /> Weitergärtnern
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const GameScreen = ({ roomData, user, onBack, onUpdateRoom }: { roomData: RoomData, user: firebase.User, onBack: () => void, onUpdateRoom: (d: Partial<RoomData>) => void }) => {
+    const [selectedItem, setSelectedItem] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState('garden');
+    const [now, setNow] = useState(Date.now());
+    
+    useEffect(() => {
+        const i = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(i);
+    }, []);
+
+    const garden = roomData.gardens['main'] || {};
+    // Ensure 5x5 grid
+    for(let x=0; x<5; x++) for(let y=0; y<5; y++) if(!garden[`${x},${y}`]) garden[`${x},${y}`] = {};
+
+    const handleCellClick = (x: number, y: number) => {
+        const key = `${x},${y}`;
+        const cell = garden[key];
+        const newGarden = { ...garden };
+
+        // 1. Plant/Place
+        if (selectedItem && (!cell.item && !cell.floor)) {
             const itemDef = ITEMS[selectedItem];
-            const invCount = roomData.inventory[selectedItem] || 0;
-            if (invCount > 0) {
-                if (itemDef.type === 'floor') { 
-                    if (cell.item) return alert("Erst Pflanze entfernen!"); 
-                    await roomRef.update({ [`${path}.floor`]: selectedItem, [`inventory.${selectedItem}`]: increment(-1) }); 
-                } else if (itemDef.type === 'seed' && !cell.floor && !cell.item) {
-                    await roomRef.update({ 
-                        [`${path}.item`]: selectedItem, 
-                        [`${path}.stage`]: 0, 
-                        [`${path}.plantedAt`]: new Date().toISOString(), 
-                        [`inventory.${selectedItem}`]: increment(-1) 
-                    });
-                } else if (itemDef.type === 'deco' && !cell.item) {
-                     await roomRef.update({ [`${path}.item`]: selectedItem, [`inventory.${selectedItem}`]: increment(-1) }); 
-                }
-                if (invCount - 1 <= 0) setSelectedItem(null);
+            if (!itemDef) return;
+            
+            // Check inventory
+            if ((roomData.inventory[selectedItem] || 0) <= 0) {
+                alert("Nicht genug im Inventar!");
+                return;
             }
+
+            if (itemDef.type === 'floor') {
+                newGarden[key] = { ...cell, floor: selectedItem };
+            } else {
+                newGarden[key] = { ...cell, item: selectedItem, stage: 0, grown: false, plantedAt: new Date().toISOString() };
+                if (itemDef.type === 'seed') {
+                     // Usually seeds need water to start.
+                     newGarden[key].lastWatered = "0"; 
+                }
+            }
+            
+            const newInv = { ...roomData.inventory };
+            newInv[selectedItem]--;
+            onUpdateRoom({ 
+                gardens: { ...roomData.gardens, main: newGarden },
+                inventory: newInv
+            });
             return;
         }
 
-        // Harvesting/Watering
+        // 2. Interact (Water/Harvest)
         if (cell.item) {
             const itemDef = ITEMS[cell.item];
-            if(!itemDef) return; 
-            
-            if (cell.grown && itemDef.type === 'seed') { 
-                await roomRef.update({ 
-                    [`${path}.item`]: deleteField(), 
-                    [`${path}.stage`]: deleteField(), 
-                    [`${path}.grown`]: deleteField(), 
-                    gems: increment(itemDef.reward || 0) 
-                }); 
-            } else if (itemDef.type === 'seed') { 
-                const lastWatered = cell.lastWatered ? new Date(cell.lastWatered).getTime() : 0; 
-                if (now - lastWatered > WATER_COOLDOWN) { 
-                    const newStage = (cell.stage || 0) + 1; 
-                    await roomRef.update({ 
-                        [`${path}.stage`]: newStage, 
-                        [`${path}.grown`]: newStage >= (itemDef.stages || 1), 
-                        [`${path}.lastWatered`]: new Date().toISOString() 
-                    }); 
-                } 
-            } else if (itemDef.type === 'deco') { 
-                if(confirm(`${itemDef.name} ins Inventar zurück?`)) { 
-                    await roomRef.update({ [`${path}.item`]: deleteField(), [`inventory.${cell.item}`]: increment(1) }); 
-                } 
-            }
-            return;
-        }
+            if (!itemDef) return;
 
-        // Removing Floor
-        if (cell.floor) { 
-            const floorDef = ITEMS[cell.floor]; 
-            if(confirm(`${floorDef.name} aufheben?`)) { 
-                await roomRef.update({ [`${path}.floor`]: deleteField(), [`inventory.${cell.floor}`]: increment(1) }); 
-            } 
+            // Harvest
+            if (cell.grown) {
+                const reward = itemDef.reward || 5;
+                const newInv = { ...roomData.inventory };
+                if (itemDef.growsInto) {
+                    newInv[itemDef.growsInto] = (newInv[itemDef.growsInto] || 0) + 1;
+                }
+                
+                newGarden[key] = { floor: cell.floor }; // Clear item
+                onUpdateRoom({
+                    gardens: { ...roomData.gardens, main: newGarden },
+                    coins: (roomData.coins || 0) + reward,
+                    inventory: newInv
+                });
+                return;
+            }
+
+            // Water
+            if (itemDef.type === 'seed') {
+                const lastWatered = cell.lastWatered ? new Date(cell.lastWatered).getTime() : 0;
+                if (now - lastWatered > WATER_COOLDOWN) {
+                    let newStage = (cell.stage || 0) + 1;
+                    let grown = false;
+                    if (newStage >= (itemDef.stages || 3)) {
+                        grown = true;
+                    }
+                    newGarden[key] = { ...cell, lastWatered: new Date().toISOString(), stage: newStage, grown };
+                    onUpdateRoom({ gardens: { ...roomData.gardens, main: newGarden } });
+                }
+            }
         }
     };
 
-    const buy = async (id: string, isGarden: boolean) => { 
-        if (isSpectator || !roomData) return; 
-        const increment = firebase.firestore.FieldValue.increment;
-        const arrayUnion = firebase.firestore.FieldValue.arrayUnion;
-
-        if(isGarden) { 
-            const g = GARDEN_UPGRADES.find(x => x.id === parseInt(id)); 
-            if(g && roomData.gems >= g.price) {
-                await db.collection('rooms').doc(roomCode).update({ gems: increment(-g.price), unlockedGardens: arrayUnion(parseInt(id)), [`gardens.${id}`]: {} });
-            }
-        } else { 
-            const item = ITEMS[id]; 
-            if (roomData.coins >= item.price) {
-                await db.collection('rooms').doc(roomCode).update({ coins: increment(-item.price), [`inventory.${id}`]: increment(1) }); 
-            }
-        } 
+    const buyItem = (id: string) => {
+        const item = ITEMS[id];
+        if (roomData.coins >= item.price) {
+            const newInv = { ...roomData.inventory };
+            newInv[id] = (newInv[id] || 0) + 1;
+            onUpdateRoom({
+                coins: roomData.coins - item.price,
+                inventory: newInv
+            });
+        }
     };
-
-    if (!roomData) return <div className="h-full flex items-center justify-center animate-pulse">Lade Garten...</div>;
-
-    const currentGrid = roomData.gardens[activeGardenIdx] || {};
 
     return (
-        <div className={`flex h-full bg-slate-100 overflow-hidden md:max-w-7xl md:mx-auto md:my-8 md:rounded-3xl md:shadow-2xl md:border ${isSpectator ? 'border-purple-300 ring-4 ring-purple-100' : 'border-slate-200'}`}>
-            <nav className="fixed bottom-0 left-0 w-full bg-white border-t z-40 flex justify-around p-2 pb-safe md:relative md:w-64 md:flex-col md:justify-start md:border-t-0 md:border-r md:p-6 md:gap-4">
-                <div className="hidden md:block mb-8"><h1 className="text-2xl font-bold text-green-600 flex items-center gap-2"><Flower2/> DuoBloom</h1></div>
-                <button onClick={() => setTab('garden')} className={`p-3 rounded-xl flex md:flex-row flex-col items-center gap-3 transition-all ${tab === 'garden' ? 'bg-green-50 text-green-600 font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Flower2/> <span className="text-[10px] md:text-sm">Garten</span></button>
-                {!isSpectator && (
-                    <>
-                        <button onClick={() => setTab('tasks')} className={`p-3 rounded-xl flex md:flex-row flex-col items-center gap-3 transition-all ${tab === 'tasks' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><CheckSquare/> <span className="text-[10px] md:text-sm">Aufgaben</span></button>
-                        <button onClick={() => setTab('shop')} className={`p-3 rounded-xl flex md:flex-row flex-col items-center gap-3 transition-all ${tab === 'shop' ? 'bg-orange-50 text-orange-600 font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><ShoppingCart/> <span className="text-[10px] md:text-sm">Shop</span></button>
-                    </>
-                )}
-            </nav>
-            <main className="flex-1 overflow-y-auto bg-[#eefcf3] relative pb-28 md:pb-0">
-                <header className="sticky top-0 backdrop-blur-md p-4 shadow-sm z-30 flex justify-between items-center px-6 bg-white/90">
-                    <div className="flex items-center gap-4">
-                        <button onClick={onBackToMenu} className="bg-white border p-2 rounded-xl hover:bg-gray-100 shadow-sm"><Home className="text-gray-600"/></button>
-                        <div><span className="font-bold text-gray-700">{roomData.roomName}</span></div>
-                    </div>
-                    <div className="flex gap-4 items-center">
-                        <span className="font-bold text-yellow-600 flex items-center gap-1">💰 {roomData.coins}</span>
-                        <span className="font-bold text-purple-600 flex items-center gap-1">💎 {roomData.gems}</span>
-                    </div>
-                </header>
-                
-                {tab === 'garden' && (
-                    <div className="p-4 md:p-8 flex flex-col items-center">
-                        <div className="flex gap-2 mb-4 overflow-x-auto w-full justify-center">
-                            {GARDEN_UPGRADES.map(g => { 
-                                const owned = (roomData.unlockedGardens || []).includes(g.id); 
-                                if(!owned) return null; 
-                                return <button key={g.id} onClick={() => setActiveGardenIdx(g.id)} className={`px-4 py-1 rounded-full text-sm font-bold border ${activeGardenIdx === g.id ? 'bg-green-500 text-white border-green-500' : 'bg-white text-green-700 border-green-200'}`}>{g.name}</button> 
-                            })}
+        <div className="h-full flex flex-col bg-green-50 overflow-hidden">
+            {/* Header */}
+            <div className="bg-white p-4 shadow-sm flex justify-between items-center z-10">
+                <div className="flex items-center gap-4">
+                    <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full"><Home size={20}/></button>
+                    <div>
+                        <h2 className="font-bold text-lg">{roomData.roomName}</h2>
+                        <div className="flex gap-4 text-sm font-mono text-gray-600">
+                             <span className="text-yellow-600 font-bold flex items-center gap-1">🪙 {roomData.coins}</span>
+                             <span className="text-blue-500 font-bold flex items-center gap-1">💎 {roomData.gems}</span>
                         </div>
-                        <div className="p-4 rounded-xl shadow-2xl relative inline-block bg-cover bg-center bg-[#5c4033]" style={{ backgroundImage: `url(assets/gbg.png)` }}>
-                            <div className="grid grid-cols-5 gap-0 border-2 border-black/10 shadow-inner">
-                                {Array.from({ length: 25 }).map((_, i) => ( 
-                                    <GridCell 
-                                        key={i} 
-                                        x={i%5} 
-                                        y={Math.floor(i/5)} 
-                                        cell={currentGrid[`${i%5},${Math.floor(i/5)}`] || {}} 
-                                        handleGridClick={handleGridClick} 
-                                        now={now} 
-                                    /> 
-                                ))}
-                            </div>
-                        </div>
-                        {!isSpectator && (
-                            <div className="mt-8 w-full max-w-2xl bg-white p-4 rounded-2xl shadow-lg border border-gray-100">
-                                <h3 className="text-xs font-bold text-gray-400 uppercase mb-3">Werkzeugkasten</h3>
-                                <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-                                    {Object.entries(roomData.inventory).map(([id, count]) => { 
-                                        if ((count as number) <= 0) return null; 
-                                        const item = ITEMS[id];
-                                        return (
-                                            <button key={id} onClick={() => setSelectedItem(selectedItem === id ? null : id)} className={`flex-shrink-0 flex flex-col items-center p-3 rounded-xl border-2 transition-all min-w-[80px] ${selectedItem === id ? 'border-blue-500 bg-blue-50 shadow-md transform -translate-y-1' : 'border-gray-100 hover:bg-gray-50'}`}>
-                                                {item.img ? <img src={item.img} className="w-8 h-8 object-contain"/> : <span className="text-2xl">{item.icon}</span>}
-                                                <span className="text-xs font-bold text-gray-600">{count}x</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
                     </div>
-                )}
-                {/* Shop Tab (Simplified) */}
-                {tab === 'shop' && !isSpectator && (
-                     <div className="p-6 md:max-w-4xl md:mx-auto pb-32">
-                        <h3 className="font-bold text-xl text-orange-600 mb-4 flex items-center gap-2"><Store/> Markt</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {Object.values(ITEMS).map(item => (
-                                <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
-                                    <div className="text-4xl mb-3 mt-2">
-                                        {item.img ? <img src={item.img} className="w-12 h-12 object-contain"/> : item.icon}
-                                    </div>
-                                    <h3 className="font-bold text-gray-700 text-center text-sm">{item.name}</h3>
-                                    <button 
-                                        onClick={() => buy(item.id, false)} 
-                                        disabled={roomData.coins < item.price} 
-                                        className={`mt-2 w-full py-2 rounded-xl text-sm font-bold transition-all ${roomData.coins >= item.price ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400'}`}
-                                    >
-                                        {item.price} 💰
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={() => setSelectedItem(null)} className={`p-2 rounded-xl ${!selectedItem ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}>🖐️</button>
+                    <button onClick={() => setActiveTab('shop')} className={`p-2 rounded-xl ${activeTab === 'shop' ? 'bg-purple-100 text-purple-700' : 'hover:bg-gray-100'}`}><Store size={20}/></button>
+                </div>
+            </div>
+
+            {/* Main Area */}
+            <div className="flex-1 overflow-auto p-4 flex justify-center">
+                 {/* Grid */}
+                 <div className="grid grid-cols-5 gap-1 bg-green-200 p-2 rounded-xl shadow-inner self-start">
+                     {[0,1,2,3,4].map(y => [0,1,2,3,4].map(x => (
+                         <GridCell key={`${x},${y}`} x={x} y={y} cell={garden[`${x},${y}`] || {}} handleGridClick={handleCellClick} now={now} />
+                     )))}
+                 </div>
+            </div>
+
+            {/* Bottom Panel (Inventory/Shop) */}
+            <div className="bg-white border-t p-4 h-48 overflow-y-auto">
+                {activeTab === 'shop' ? (
+                     <div className="space-y-4">
+                         <div className="flex justify-between items-center">
+                            <h3 className="font-bold text-gray-700">Laden</h3>
+                            <button onClick={() => setActiveTab('garden')} className="text-sm text-blue-500">Zum Inventar</button>
+                         </div>
+                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                             {Object.values(ITEMS).map(item => (
+                                 <button key={item.id} onClick={() => buyItem(item.id)} disabled={roomData.coins < item.price} className="flex flex-col items-center p-2 border rounded-xl hover:bg-gray-50 disabled:opacity-50">
+                                     <ItemDisplay item={item} className="w-8 h-8 mb-1" />
+                                     <span className="text-xs font-bold">{item.name}</span>
+                                     <span className="text-xs text-yellow-600">🪙 {item.price}</span>
+                                 </button>
+                             ))}
+                         </div>
                      </div>
+                ) : (
+                    <div>
+                        <h3 className="font-bold text-gray-700 mb-2">Dein Rucksack</h3>
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                            {Object.entries(roomData.inventory).map(([id, count]) => {
+                                if (count <= 0) return null;
+                                const item = ITEMS[id];
+                                return (
+                                    <button key={id} onClick={() => setSelectedItem(selectedItem === id ? null : id)} className={`flex-shrink-0 flex flex-col items-center p-3 border rounded-xl min-w-[80px] ${selectedItem === id ? 'ring-2 ring-green-500 bg-green-50' : 'bg-white'}`}>
+                                        <ItemDisplay item={item} className="w-8 h-8 mb-1" />
+                                        <span className="text-xs font-bold truncate w-full text-center">{item.name}</span>
+                                        <span className="text-xs bg-gray-200 px-1.5 rounded-full mt-1">{count}x</span>
+                                    </button>
+                                );
+                            })}
+                            {Object.values(roomData.inventory).every(c => c <= 0) && <p className="text-gray-400 text-sm">Leer...</p>}
+                        </div>
+                    </div>
                 )}
-            </main>
+            </div>
+            
             <OctoChat user={user} roomData={roomData} />
         </div>
     );
 };
 
-// --- MAIN APP ---
+// --- APP COMPONENT ---
 
 const App = () => {
     const [user, setUser] = useState<firebase.User | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [view, setView] = useState<'login' | 'menu' | 'community' | 'game'>('login');
-    const [currentRoom, setCurrentRoom] = useState<string | null>(localStorage.getItem('lastRoom') || null);
-    const [isSpectator, setIsSpectator] = useState(false);
-    const [joinCode, setJoinCode] = useState("");
+    const [screen, setScreen] = useState<'login'|'menu'|'game'|'community'>('login');
+    const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
+    const [roomData, setRoomData] = useState<RoomData | null>(null);
 
     useEffect(() => {
-        const unsub = auth.onAuthStateChanged((u) => {
+        const unsub = auth.onAuthStateChanged(u => {
             setUser(u);
-            setLoading(false);
-            if (u) setView('menu');
-            else setView('login');
+            if(u) setScreen('menu'); else setScreen('login');
         });
-        return () => unsub();
+        return unsub;
     }, []);
 
-    const handleLogin = async () => { 
-        try { await auth.signInWithPopup(new GoogleAuthProvider()); } 
-        catch (e: any) { alert("Login fehlgeschlagen: " + e.message); } 
-    };
-
-    const handleCreate = async () => {
-        if(!user) return;
-        const newCode = Math.random().toString(36).substring(2, 7).toUpperCase();
-        await db.collection('rooms').doc(newCode).set({ 
-            roomName: "Mein Garten", 
-            owner: user.uid, 
-            ownerName: user.displayName, 
-            createdAt: new Date().toISOString(), 
-            users: [user.uid], 
-            tasks: [], 
-            inventory: { carrot_seed: 2 }, 
-            coins: 50, 
-            gems: 0, 
-            gardens: { 0: {} }, 
-            unlockedGardens: [0], 
-            likes: 0 
+    useEffect(() => {
+        if (!currentRoomId) return;
+        const unsub = db.collection('rooms').doc(currentRoomId).onSnapshot(snap => {
+            if (snap.exists) setRoomData(snap.data() as RoomData);
         });
-        enterRoom(newCode, false);
+        return unsub;
+    }, [currentRoomId]);
+
+    const handleLogin = async () => {
+        try { await auth.signInWithPopup(new GoogleAuthProvider()); } catch (e) { console.error(e); }
     };
 
-    const enterRoom = (code: string, spectator: boolean) => { 
-        if (!spectator) localStorage.setItem('lastRoom', code); 
-        setCurrentRoom(code); 
-        setIsSpectator(spectator); 
-        setView('game'); 
+    const handleMenuAction = async (action: string, param?: any) => {
+        if (action === 'create') {
+            const newRoomRef = db.collection('rooms').doc();
+            const newRoom: RoomData = {
+                roomName: `Garten von ${user?.displayName?.split(' ')[0]}`,
+                owner: user!.uid,
+                ownerName: user!.displayName || 'Gärtner',
+                users: [user!.uid],
+                tasks: [],
+                inventory: { carrot_seed: 5, stone_floor: 10 },
+                coins: 100,
+                gems: 0,
+                gardens: { main: {} },
+                unlockedGardens: [0],
+                likes: 0,
+                createdAt: new Date().toISOString()
+            };
+            await newRoomRef.set(newRoom);
+            setCurrentRoomId(newRoomRef.id);
+            setScreen('game');
+        } else if (action === 'join') {
+            const snap = await db.collection('rooms').doc(param).get();
+            if (snap.exists) {
+                setCurrentRoomId(param);
+                setScreen('game');
+            } else {
+                alert("Garten nicht gefunden!");
+            }
+        } else if (action === 'enter') {
+            setCurrentRoomId(param);
+            setScreen('game');
+        } else if (action === 'community') {
+            setScreen('community');
+        }
     };
 
-    if (loading) return <div className="h-full flex items-center justify-center bg-slate-50 text-green-600 animate-pulse"><Loader2 className="animate-spin mr-2"/> Lade DuoBloom...</div>;
+    const handleUpdateRoom = (data: Partial<RoomData>) => {
+        if (currentRoomId) db.collection('rooms').doc(currentRoomId).update(data);
+    };
+
     if (!user) return <LoginScreen onLogin={handleLogin} />;
-
-    return (
-        <div className="h-full w-full">
-            {view === 'menu' && (
-                <div className="h-full bg-slate-100 flex flex-col items-center justify-center p-4">
-                    <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden">
-                        <div className="p-6 bg-green-500 text-white flex items-center gap-4">
-                            {user.photoURL && <img src={user.photoURL} className="w-16 h-16 rounded-full border-4 border-white/50" />}
-                            <div>
-                                <h2 className="text-xl font-bold">{user.displayName}</h2>
-                                <p className="opacity-80 text-sm">Willkommen zurück!</p>
-                            </div>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            {currentRoom && (
-                                <button onClick={() => enterRoom(currentRoom, false)} className="w-full bg-green-50 border-2 border-green-500 p-4 rounded-xl flex justify-between items-center group hover:bg-green-100 transition-colors">
-                                    <div className="text-left">
-                                        <div className="text-xs text-green-600 font-bold uppercase">Weitergärtnern</div>
-                                        <div className="text-xl font-bold text-green-800">{currentRoom}</div>
-                                    </div>
-                                    <div className="bg-green-500 text-white p-2 rounded-full group-hover:scale-110 transition-transform"><Play size={20} fill="currentColor"/></div>
-                                </button>
-                            )}
-                            <button onClick={handleCreate} className="w-full bg-blue-500 text-white p-4 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-600 transition-colors flex items-center justify-center gap-2">
-                                <PlusSquare/> Neuer Garten
-                            </button>
-                            <div className="flex gap-2">
-                                <input 
-                                    value={joinCode} 
-                                    onChange={e => setJoinCode(e.target.value.toUpperCase())} 
-                                    placeholder="Garten Code" 
-                                    className="flex-1 bg-gray-100 rounded-xl px-4 py-3 font-bold uppercase outline-none focus:ring-2 ring-blue-500"
-                                />
-                                <button onClick={() => joinCode && enterRoom(joinCode, false)} className="bg-gray-800 text-white px-6 rounded-xl font-bold">
-                                    <ArrowRight/>
-                                </button>
-                            </div>
-                        </div>
-                        <div className="bg-gray-50 p-4 border-t flex justify-between text-gray-400">
-                             <button onClick={() => auth.signOut()} className="flex items-center gap-2 hover:text-red-500"><LogOut size={16}/> Logout</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {view === 'game' && currentRoom && (
-                <GameApp user={user} roomCode={currentRoom} isSpectator={isSpectator} onBackToMenu={() => setView('menu')} />
-            )}
-        </div>
-    );
+    if (screen === 'community') return <CommunityList onVisit={(id) => { setCurrentRoomId(id); setScreen('game'); }} onBack={() => setScreen('menu')} />;
+    if (screen === 'game' && roomData) return <GameScreen roomData={roomData} user={user} onBack={() => setScreen('menu')} onUpdateRoom={handleUpdateRoom} />;
+    
+    return <MainMenu user={user} onAction={handleMenuAction} currentRoom={currentRoomId} />;
 };
 
 export default App;

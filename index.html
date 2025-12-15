@@ -3,33 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DuoBloom 24.1 (Smart Octo)</title>
+    <title>DuoBloom 2.0</title>
+    
+    <!-- PWA Settings -->
     <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4ade80">
+    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Food/Carrot.png">
+    
+    <!-- Styles & Compilers -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Babel for in-browser JSX compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <style>
-        body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; overflow: hidden; }
+        body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; overflow: hidden; background-color: #f0fdf4; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .texture-stone { background-color: #d1d5db; background-image: radial-gradient(circle, #9ca3af 20%, transparent 20%), radial-gradient(circle, #9ca3af 20%, transparent 20%); background-size: 10px 10px; background-position: 0 0, 5px 5px; border: 1px solid #9ca3af; }
         .texture-wood { background-color: #78350f; background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.1) 5px, rgba(255,255,255,0.1) 10px); border: 1px solid #451a03; box-shadow: inset 0 0 10px rgba(0,0,0,0.2); }
         .animate-pop { animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .animate-slide-up { animation: slideUp 0.4s ease-out; }
         @keyframes pop { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes slideUp { 0% { transform: translateY(100%); } 100% { transform: translateY(0); } }
     </style>
-
-    <!-- ENV CONFIG: Edit these values! -->
-    <script>
-        window.process = {
-            env: {
-                // TODO: PASTE YOUR GEMINI API KEY HERE
-                API_KEY: 'AIzaSyCok5hKUaK6ULpz-NSeZuaHCI6tVlbRVlU', 
-                // TODO: CONFIRM YOUR FIREBASE KEY
-                FIREBASE_API_KEY: 'AIzaSyDqEDD2Hds_pX5phI5cZKU3Q-mRtQxTZDg' 
-            }
-        };
-    </script>
 
     <!-- Import Map for Modules -->
     <script type="importmap">
@@ -51,75 +46,62 @@
 }
 </script>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans h-[100dvh] w-full">
+<body class="text-slate-800 font-sans h-[100dvh] w-full">
+
     <div id="root" class="h-full w-full"></div>
 
-    <!-- MAIN APP SCRIPT -->
-    <script type="text/babel" data-type="module" data-presets="react,typescript">
+    <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef } from 'react';
         import ReactDOM from 'react-dom/client';
         import { GoogleGenAI } from "@google/genai";
-        import { LogOut, Home, Play, Plus, ArrowRight, Loader2, PlusSquare, Store, CheckSquare, Flower2, ShoppingCart, Send, X } from 'lucide-react';
+        import { 
+            LogOut, Home, Play, Plus, ArrowRight, Loader2, Store, 
+            CheckSquare, Flower2, ShoppingCart, Send, X, Heart, 
+            Trophy, Calendar, AlertCircle, Share2, PlusSquare, Castle 
+        } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
-        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, increment, arrayUnion, deleteField } from "firebase/firestore";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, increment, arrayUnion, deleteField, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 
-        // --- 1. CONFIGURATION & SERVICES ---
+        // ==========================================
+        // 🛠️ CONFIGURATION - PASTE KEYS HERE
+        // ==========================================
         
+        // 1. Google Gemini API Key
+        const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY_HERE'; 
+
+        // 2. Firebase Config
         const firebaseConfig = {
-            apiKey: process.env.FIREBASE_API_KEY,
+            apiKey: "AIzaSyDqEDD2Hds_pX5phI5cZKU3Q-mRtQxTZDg", // Default demo key (restrict yours in Prod!)
             authDomain: "duobloom-a9b7b.firebaseapp.com",
             projectId: "duobloom-a9b7b",
             storageBucket: "duobloom-a9b7b.firebasestorage.app",
             messagingSenderId: "118209789780",
-            appId: "1:118209789780:web:ce2563e693a76f09a7d2c1",
-            measurementId: "G-Z0W0LK6D88"
+            appId: "1:118209789780:web:ce2563e693a76f09a7d2c1"
         };
 
+        // --- Init Services ---
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const googleProvider = new GoogleAuthProvider();
-
-        // --- GEMINI SERVICE ---
-        let chatSession = null;
-
-        const initializeOctoChat = (userName) => {
-            if (!process.env.API_KEY || process.env.API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
-                console.error("Gemini API Key is missing or default!");
-                return null;
-            }
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            chatSession = ai.chats.create({
-                model: 'gemini-2.5-flash',
-                config: {
-                    systemInstruction: `Du bist Octo, ein freundlicher Oktopus im Spiel DuoBloom.
-                    Der Spieler heißt ${userName}.
-                    Antworte immer kurz (maximal 2-3 Sätze), lustig und benutze viele Emojis (🐙, 🌱, 🌸).
-                    Du hilfst beim Gärtnern und motivierst den Spieler.
-                    Sprich Deutsch.`,
-                }
-            });
-            return chatSession;
-        };
-
-        const sendMessageToOcto = async (message) => {
-            if (!chatSession) return "Octo schläft... (Bitte API Key prüfen!) 🐙";
+        
+        // --- Gemini AI ---
+        let chatClient = null;
+        if (GEMINI_API_KEY && !GEMINI_API_KEY.includes('YOUR_GEMINI')) {
             try {
-                const response = await chatSession.sendMessage({ message });
-                return response.text;
-            } catch (error) {
-                console.error("Octo Error:", error);
-                return "Blub? Mein Kopf tut weh... (Fehler)";
-            }
-        };
+                const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+                chatClient = ai;
+            } catch (e) { console.error("Gemini Init Error", e); }
+        }
 
-        // --- 2. CONSTANTS & TYPES ---
-
+        // ==========================================
+        // 📦 GAME DATA & CONSTANTS
+        // ==========================================
         const WATER_COOLDOWN = 6 * 60 * 60 * 1000;
         const ITEMS = {
             carrot_seed: { id: 'carrot_seed', name: 'Karotte', type: 'seed', price: 20, img: 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Food/Carrot.png', icon: '🥕', growsInto: 'carrot', stages: 3, reward: 10 },
             sunflower_seed: { id: 'sunflower_seed', name: 'Sonnenblume', type: 'seed', price: 60, img: 'assets/sunflower.png', icon: '🌻', growsInto: 'sunflower', stages: 4, reward: 20 },
+            corn_seed: { id: 'corn_seed', name: 'Mais', type: 'seed', price: 40, img: 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Food/Ear%20of%20Corn.png', icon: '🌽', growsInto: 'corn', stages: 3, reward: 15 },
             stone_floor: { id: 'stone_floor', name: 'Steinweg', type: 'floor', price: 10, css: 'texture-stone', icon: '🪨' },
             wood_floor: { id: 'wood_floor', name: 'Holzboden', type: 'floor', price: 25, css: 'texture-wood', icon: '🪵' },
             fence: { id: 'fence', name: 'Zaun', type: 'deco', price: 15, img: 'assets/fence.png', icon: '🚧' },
@@ -131,25 +113,39 @@
             { id: 2, name: "Waldlichtung", price: 650 },
         ];
 
-        // --- 3. COMPONENTS ---
+        // ==========================================
+        // 🧩 COMPONENTS
+        // ==========================================
 
+        const Modal = ({ children, onClose, title }) => (
+            <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm animate-pop">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]">
+                    <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                        <h3 className="font-bold text-lg text-gray-800">{title}</h3>
+                        <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-full"><X size={20} /></button>
+                    </div>
+                    <div className="p-4 overflow-y-auto">{children}</div>
+                </div>
+            </div>
+        );
+
+        // --- OCTO CHAT 🐙 ---
         const OctoChat = ({ user }) => {
             const [isOpen, setIsOpen] = useState(false);
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
             const [isTyping, setIsTyping] = useState(false);
             const messagesEndRef = useRef(null);
-            const initialized = useRef(false);
+            const hasInited = useRef(false);
 
             useEffect(() => {
-                if (!initialized.current && user?.displayName) {
-                    initializeOctoChat(user.displayName);
+                if (!hasInited.current && user) {
                     setMessages([{ role: 'model', text: `Blub Blub! 🐙 Hallo ${user.displayName.split(' ')[0]}!` }]);
-                    initialized.current = true;
+                    hasInited.current = true;
                 }
             }, [user]);
 
-            useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isOpen]);
+            useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isOpen, isTyping]);
 
             const handleSend = async () => {
                 if(!input.trim()) return;
@@ -157,35 +153,52 @@
                 setInput("");
                 setMessages(p => [...p, { role: 'user', text: txt }]);
                 setIsTyping(true);
-                const reply = await sendMessageToOcto(txt);
-                setMessages(p => [...p, { role: 'model', text: reply }]);
+
+                if (!chatClient) {
+                    setTimeout(() => {
+                        setMessages(p => [...p, { role: 'model', text: "API Key prüfen! 🔑 (Ich brauche einen API Key in index.html Zeile 55)" }]);
+                        setIsTyping(false);
+                    }, 500);
+                    return;
+                }
+
+                try {
+                    const response = await chatClient.models.generateContent({
+                        model: 'gemini-2.5-flash',
+                        contents: `System: Du bist Octo, ein lustiger Oktopus-Gärtner. Spieler: ${user.displayName}. Antworte kurz, witzig, mit Emojis.
+                        User: ${txt}`,
+                    });
+                    setMessages(p => [...p, { role: 'model', text: response.text }]);
+                } catch (err) {
+                    setMessages(p => [...p, { role: 'model', text: "Blub? (Fehler beim Denken 🤯)" }]);
+                }
                 setIsTyping(false);
             };
 
             return (
                 <>
-                    <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-4 md:bottom-8 md:right-8 z-40 bg-white p-2 rounded-full shadow-xl border-4 border-purple-200 animate-bounce hover:scale-110">
+                    <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-4 md:bottom-8 md:right-8 z-40 bg-white p-2 rounded-full shadow-xl border-4 border-purple-200 animate-bounce hover:scale-110 transition-transform">
                         <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Octopus.png" className="w-10 h-10" />
                     </button>
                     {isOpen && (
                         <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center pointer-events-none">
-                            <div className="bg-white w-full md:w-[380px] h-[70vh] md:h-[550px] md:rounded-3xl shadow-2xl flex flex-col pointer-events-auto animate-pop border m-0 md:m-4 overflow-hidden">
+                            <div className="bg-white w-full md:w-[380px] h-[70vh] md:h-[550px] md:rounded-3xl shadow-2xl flex flex-col pointer-events-auto animate-slide-up border m-0 md:m-4 overflow-hidden">
                                 <div className="bg-purple-600 p-4 text-white flex justify-between items-center shadow-md">
                                     <h3 className="font-bold flex items-center gap-2">🐙 Octo AI</h3>
-                                    <button onClick={() => setIsOpen(false)}><X size={24} /></button>
+                                    <button onClick={() => setIsOpen(false)} className="pointer-events-auto"><X size={24} /></button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4">
+                                <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4 pointer-events-auto">
                                     {messages.map((m, i) => (
                                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`p-3 rounded-2xl text-sm max-w-[85%] ${m.role === 'user' ? 'bg-purple-600 text-white' : 'bg-white border'}`}>{m.text}</div>
+                                            <div className={`p-3 rounded-2xl text-sm max-w-[85%] ${m.role === 'user' ? 'bg-purple-600 text-white rounded-br-none' : 'bg-white border text-gray-800 shadow-sm rounded-bl-none'}`}>{m.text}</div>
                                         </div>
                                     ))}
                                     {isTyping && <div className="text-xs text-gray-400 ml-4 animate-pulse">Octo denkt...</div>}
                                     <div ref={messagesEndRef} />
                                 </div>
-                                <div className="p-3 bg-white border-t flex gap-2">
-                                    <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key==='Enter' && handleSend()} placeholder="Frag etwas..." className="flex-1 bg-gray-100 rounded-xl px-4 py-3 outline-none" />
-                                    <button onClick={handleSend} className="bg-purple-600 text-white p-3 rounded-xl"><Send size={20} /></button>
+                                <div className="p-3 bg-white border-t flex gap-2 pointer-events-auto">
+                                    <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key==='Enter' && handleSend()} placeholder="Frag etwas..." className="flex-1 bg-gray-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500" />
+                                    <button onClick={handleSend} className="bg-purple-600 text-white p-3 rounded-xl hover:bg-purple-700"><Send size={20} /></button>
                                 </div>
                             </div>
                         </div>
@@ -194,6 +207,7 @@
             );
         };
 
+        // --- GRID CELL ---
         const GridCell = ({ x, y, cell, handleGridClick, now }) => {
             const floorItem = cell.floor ? ITEMS[cell.floor] : null;
             const objectItem = cell.item ? ITEMS[cell.item] : null;
@@ -218,10 +232,11 @@
                             ) : (
                                 <div className="flex flex-col items-center relative">
                                     {objectItem.img ? <img src={objectItem.img} className="w-8 h-8 md:w-12 md:h-12 object-contain opacity-70" /> : <span className="text-2xl">{objectItem.icon}</span>}
-                                    {!showTimer && <div className="absolute -top-4 bg-blue-500 text-white text-[8px] px-1 rounded-full animate-bounce">Gießen!</div>}
+                                    {!showTimer && <div className="absolute -top-4 bg-blue-500 text-white text-[8px] px-1 rounded-full animate-bounce shadow-sm">Gießen!</div>}
                                     <div className="w-8 h-1 bg-black/20 rounded-full mt-1 overflow-hidden">
-                                        <div className="h-full bg-blue-500" style={{width: `${((cell.stage || 0)/(objectItem.stages || 1))*100}%`}} />
+                                        <div className="h-full bg-blue-500 transition-all" style={{width: `${((cell.stage || 0)/(objectItem.stages || 1))*100}%`}} />
                                     </div>
+                                    {showTimer && <div className="absolute -bottom-2 bg-black/60 text-white text-[8px] px-1 rounded backdrop-blur-sm">{timeLeftStr}</div>}
                                 </div>
                             )}
                         </div>
@@ -231,21 +246,45 @@
             );
         };
 
+        // ==========================================
+        // 🎮 GAME LOGIC
+        // ==========================================
         const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }) => {
             const [roomData, setRoomData] = useState(null);
             const [tab, setTab] = useState('garden');
             const [activeGardenIdx, setActiveGardenIdx] = useState(0);
             const [selectedItem, setSelectedItem] = useState(null);
             const [now, setNow] = useState(Date.now());
+            const [showTaskModal, setShowTaskModal] = useState(false);
+            const [newTaskTitle, setNewTaskTitle] = useState("");
+            const [newTaskReward, setNewTaskReward] = useState(20);
+            const [taskFilter, setTaskFilter] = useState('active'); // active | done
 
             useEffect(() => {
                 if(!roomCode) return;
-                const unsub = onSnapshot(doc(db, 'rooms', roomCode), (snap) => {
+                const unsub = onSnapshot(doc(db, 'rooms', roomCode), async (snap) => {
                     if (snap.exists()) {
                         const data = snap.data();
+                        // --- Data Migration / Defaults ---
                         if(!data.gardens) data.gardens = { 0: {} };
                         if(!data.inventory) data.inventory = {};
                         if(!data.unlockedGardens) data.unlockedGardens = [0];
+                        if(!data.tasks) data.tasks = [];
+                        
+                        // --- Streak Logic ---
+                        if(!isSpectator && user) {
+                            const today = new Date().toISOString().split('T')[0];
+                            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                            if (data.lastStreakDate !== today) {
+                                let newStreak = 1;
+                                if (data.lastStreakDate === yesterday) newStreak = (data.currentStreak || 0) + 1;
+                                // Update without triggering infinite loop if checked correctly
+                                if (data.lastStreakDate !== today) {
+                                    await updateDoc(doc(db, 'rooms', roomCode), { lastStreakDate: today, currentStreak: newStreak });
+                                    data.currentStreak = newStreak; // Local update
+                                }
+                            }
+                        }
                         setRoomData(data);
                     }
                 });
@@ -292,115 +331,293 @@
                 }
             };
 
-            if (!roomData) return <div className="h-full flex items-center justify-center animate-pulse">Lade Garten...</div>;
+            const addTask = async () => {
+                if(!newTaskTitle.trim()) return;
+                const task = {
+                    id: Date.now().toString(),
+                    title: newTaskTitle,
+                    reward: newTaskReward,
+                    type: 'once', // simple version
+                    done: false,
+                    createdBy: user.displayName
+                };
+                await updateDoc(doc(db, 'rooms', roomCode), { tasks: arrayUnion(task) });
+                setNewTaskTitle("");
+                setShowTaskModal(false);
+            };
+
+            const completeTask = async (task) => {
+                // Remove old task, add reward, maybe add to "history" if we wanted complex logic
+                // Simple logic: Delete task, give coins
+                const newTasks = roomData.tasks.filter(t => t.id !== task.id);
+                await updateDoc(doc(db, 'rooms', roomCode), { 
+                    tasks: newTasks,
+                    coins: increment(task.reward)
+                });
+            };
+
+            if (!roomData) return <div className="h-full flex items-center justify-center animate-pulse text-green-600"><Loader2 className="animate-spin mr-2"/> Lade Garten...</div>;
             const currentGrid = roomData.gardens[activeGardenIdx] || {};
 
             return (
                 <div className="flex h-full bg-slate-100 overflow-hidden md:max-w-7xl md:mx-auto md:my-8 md:rounded-3xl md:shadow-2xl md:border border-slate-200">
-                    <nav className="fixed bottom-0 left-0 w-full bg-white border-t z-40 flex justify-around p-2 pb-safe md:relative md:w-64 md:flex-col md:justify-start md:border-t-0 md:border-r md:p-6 md:gap-4">
+                    <nav className="fixed bottom-0 left-0 w-full bg-white border-t z-40 flex justify-around p-2 pb-safe md:relative md:w-64 md:flex-col md:justify-start md:border-t-0 md:border-r md:p-6 md:gap-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                         <div className="hidden md:block mb-8"><h1 className="text-2xl font-bold text-green-600 flex items-center gap-2"><Flower2/> DuoBloom</h1></div>
-                        <button onClick={() => setTab('garden')} className={`p-3 rounded-xl flex gap-3 ${tab==='garden'?'bg-green-50 text-green-600 font-bold':'text-gray-400'}`}><Flower2/> <span className="hidden md:inline">Garten</span></button>
-                        <button onClick={() => setTab('shop')} className={`p-3 rounded-xl flex gap-3 ${tab==='shop'?'bg-orange-50 text-orange-600 font-bold':'text-gray-400'}`}><Store/> <span className="hidden md:inline">Shop</span></button>
+                        <button onClick={() => setTab('garden')} className={`p-3 rounded-xl flex gap-3 transition-colors ${tab==='garden'?'bg-green-50 text-green-600 font-bold':'text-gray-400 hover:bg-gray-50'}`}><Flower2/> <span className="hidden md:inline">Garten</span></button>
+                        {!isSpectator && <button onClick={() => setTab('tasks')} className={`p-3 rounded-xl flex gap-3 transition-colors ${tab==='tasks'?'bg-blue-50 text-blue-600 font-bold':'text-gray-400 hover:bg-gray-50'}`}><CheckSquare/> <span className="hidden md:inline">Aufgaben</span></button>}
+                        {!isSpectator && <button onClick={() => setTab('shop')} className={`p-3 rounded-xl flex gap-3 transition-colors ${tab==='shop'?'bg-orange-50 text-orange-600 font-bold':'text-gray-400 hover:bg-gray-50'}`}><Store/> <span className="hidden md:inline">Shop</span></button>}
                     </nav>
                     <main className="flex-1 overflow-y-auto bg-[#eefcf3] relative pb-28 md:pb-0">
                          <header className="sticky top-0 backdrop-blur-md p-4 shadow-sm z-30 flex justify-between items-center px-6 bg-white/90">
                             <div className="flex items-center gap-4">
-                                <button onClick={onBackToMenu} className="bg-white border p-2 rounded-xl"><Home size={20}/></button>
-                                <span className="font-bold text-gray-700">{roomData.roomName}</span>
+                                <button onClick={onBackToMenu} className="bg-white border p-2 rounded-xl hover:bg-gray-100"><Home size={20} className="text-gray-600"/></button>
+                                <div>
+                                    <h2 className="font-bold text-gray-700">{roomData.roomName}</h2>
+                                    {isSpectator && <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full font-bold">Zuschauer</span>}
+                                </div>
                             </div>
-                            <div className="flex gap-4 font-bold"><span className="text-yellow-600">💰 {roomData.coins}</span><span className="text-purple-600">💎 {roomData.gems}</span></div>
+                            <div className="flex gap-4 font-bold text-sm md:text-base">
+                                <span className="text-yellow-600 bg-yellow-50 px-3 py-1 rounded-full border border-yellow-100">💰 {roomData.coins}</span>
+                                <span className="text-purple-600 bg-purple-50 px-3 py-1 rounded-full border border-purple-100">💎 {roomData.gems}</span>
+                            </div>
                         </header>
                         
                         {tab === 'garden' && (
                             <div className="p-4 flex flex-col items-center">
-                                <div className="flex gap-2 mb-4 overflow-x-auto w-full justify-center">
-                                    {GARDEN_UPGRADES.map(g => (roomData.unlockedGardens||[]).includes(g.id) && <button key={g.id} onClick={() => setActiveGardenIdx(g.id)} className={`px-4 py-1 rounded-full text-sm font-bold border ${activeGardenIdx === g.id ? 'bg-green-500 text-white' : 'bg-white text-green-700'}`}>{g.name}</button>)}
+                                {/* Garden Selector */}
+                                <div className="flex gap-2 mb-4 overflow-x-auto w-full justify-center py-2">
+                                    {GARDEN_UPGRADES.map(g => (roomData.unlockedGardens||[]).includes(g.id) && 
+                                        <button key={g.id} onClick={() => setActiveGardenIdx(g.id)} className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-all ${activeGardenIdx === g.id ? 'bg-green-500 text-white shadow-md transform scale-105' : 'bg-white text-green-700 hover:bg-green-50'}`}>{g.name}</button>
+                                    )}
                                 </div>
-                                <div className="p-4 rounded-xl shadow-2xl relative inline-block bg-[#5c4033]">
-                                    <div className="grid grid-cols-5 gap-0 border-2 border-black/10">
+                                {/* The Grid */}
+                                <div className="p-2 md:p-4 rounded-xl shadow-2xl relative inline-block bg-[#5c4033] border-4 border-[#4a332a]">
+                                    <div className="grid grid-cols-5 gap-0 shadow-inner bg-[url('assets/gbg.png')] bg-cover">
                                         {Array.from({ length: 25 }).map((_, i) => <GridCell key={i} x={i%5} y={Math.floor(i/5)} cell={currentGrid[`${i%5},${Math.floor(i/5)}`] || {}} handleGridClick={handleGridClick} now={now} />)}
                                     </div>
                                 </div>
-                                <div className="mt-8 w-full max-w-2xl bg-white p-4 rounded-2xl shadow-lg border flex gap-3 overflow-x-auto">
-                                    {Object.entries(roomData.inventory).map(([id, c]) => c > 0 && (
-                                        <button key={id} onClick={() => setSelectedItem(selectedItem===id?null:id)} className={`flex-shrink-0 flex flex-col items-center p-3 rounded-xl border-2 min-w-[80px] ${selectedItem===id?'border-blue-500 bg-blue-50':''}`}>
-                                            {ITEMS[id].img ? <img src={ITEMS[id].img} className="w-8 h-8"/> : <span className="text-2xl">{ITEMS[id].icon}</span>}
-                                            <span className="text-xs font-bold text-gray-600">{c}x</span>
-                                        </button>
+                                {/* Inventory */}
+                                {!isSpectator && (
+                                    <div className="mt-8 w-full max-w-2xl bg-white p-4 rounded-2xl shadow-lg border border-gray-100">
+                                        <h3 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2"><BriefcaseIcon/> Dein Inventar</h3>
+                                        <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                                            {Object.entries(roomData.inventory).map(([id, c]) => c > 0 && (
+                                                <button key={id} onClick={() => setSelectedItem(selectedItem===id?null:id)} className={`flex-shrink-0 flex flex-col items-center p-3 rounded-xl border-2 min-w-[80px] transition-all ${selectedItem===id?'border-blue-500 bg-blue-50 shadow-md transform -translate-y-1':'border-gray-100 hover:bg-gray-50'}`}>
+                                                    {ITEMS[id].img ? <img src={ITEMS[id].img} className="w-8 h-8 object-contain"/> : <span className="text-2xl">{ITEMS[id].icon}</span>}
+                                                    <span className="text-xs font-bold text-gray-600 mt-1">{c}x</span>
+                                                </button>
+                                            ))}
+                                            {Object.values(roomData.inventory).every(c => c <= 0) && <span className="text-gray-400 text-sm italic py-2">Leer. Geh in den Shop!</span>}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {tab === 'tasks' && !isSpectator && (
+                            <div className="p-6 max-w-3xl mx-auto">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-2xl font-bold text-gray-700">Aufgaben</h2>
+                                    <button onClick={() => setShowTaskModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold shadow-lg hover:bg-blue-700 flex items-center gap-2"><Plus size={18}/> Neu</button>
+                                </div>
+                                <div className="space-y-3">
+                                    {roomData.tasks.map(task => (
+                                        <div key={task.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center group hover:border-blue-200 transition-colors">
+                                            <div>
+                                                <div className="font-bold text-lg text-gray-800">{task.title}</div>
+                                                <div className="text-sm text-gray-500 flex items-center gap-2">
+                                                    <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-bold">+{task.reward} 💰</span>
+                                                    <span>von {task.createdBy}</span>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => completeTask(task)} className="bg-gray-100 hover:bg-green-500 hover:text-white text-gray-400 p-3 rounded-full transition-all transform hover:scale-110">
+                                                <Check size={20}/>
+                                            </button>
+                                        </div>
                                     ))}
+                                    {roomData.tasks.length === 0 && <div className="text-center py-10 text-gray-400 italic bg-white rounded-2xl border border-dashed">Keine offenen Aufgaben.<br/>Erstelle eine für dein Team!</div>}
                                 </div>
                             </div>
                         )}
-                        {tab === 'shop' && (
-                             <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                        {tab === 'shop' && !isSpectator && (
+                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
+                                <div className="col-span-full mb-4">
+                                    <h3 className="font-bold text-xl text-purple-700 flex items-center gap-2 mb-2"><Castle size={20}/> Erweiterungen (Gems)</h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                        {GARDEN_UPGRADES.filter(g => g.id !== 0).map(g => {
+                                            const owned = roomData.unlockedGardens.includes(g.id);
+                                            return (
+                                                <div key={g.id} className={`p-4 rounded-2xl border-2 flex justify-between items-center ${owned ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-purple-100'}`}>
+                                                    <div>
+                                                        <div className="font-bold">{g.name}</div>
+                                                        <div className="text-sm text-purple-600 font-bold">{g.price} 💎</div>
+                                                    </div>
+                                                    <button onClick={() => !owned && buy(g.id, true)} disabled={owned || roomData.gems < g.price} className={`px-4 py-2 rounded-xl text-xs font-bold ${owned ? 'bg-gray-200 text-gray-500' : 'bg-purple-600 text-white hover:bg-purple-700'}`}>{owned ? 'Besitz' : 'Kaufen'}</button>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                                
+                                <div className="col-span-full h-px bg-gray-200 my-4"></div>
+
                                 {Object.values(ITEMS).map(item => (
-                                    <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border flex flex-col items-center">
-                                        <div className="text-4xl mb-3">{item.img ? <img src={item.img} className="w-12 h-12"/> : item.icon}</div>
-                                        <button onClick={() => buy(item.id, false)} disabled={roomData.coins < item.price} className={`w-full py-2 rounded-xl text-sm font-bold ${roomData.coins >= item.price ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400'}`}>{item.price} 💰</button>
+                                    <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center hover:shadow-md transition-shadow">
+                                        <div className="text-4xl mb-3 h-12 flex items-center">{item.img ? <img src={item.img} className="w-12 h-12 object-contain"/> : item.icon}</div>
+                                        <h3 className="font-bold text-gray-700 text-center text-sm">{item.name}</h3>
+                                        <button onClick={() => buy(item.id, false)} disabled={roomData.coins < item.price} className={`mt-2 w-full py-2 rounded-xl text-sm font-bold transition-all ${roomData.coins >= item.price ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>{item.price} 💰</button>
                                     </div>
                                 ))}
                              </div>
                         )}
                     </main>
                     <OctoChat user={user} />
+                    {showTaskModal && (
+                        <Modal title="Neue Aufgabe erstellen" onClose={() => setShowTaskModal(false)}>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Titel</label>
+                                    <input autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} className="w-full bg-gray-50 border rounded-xl p-3 outline-none focus:ring-2 ring-blue-500" placeholder="z.B. Alle Karotten gießen"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Belohnung: {newTaskReward} 💰</label>
+                                    <input type="range" min="5" max="100" step="5" value={newTaskReward} onChange={e => setNewTaskReward(parseInt(e.target.value))} className="w-full accent-blue-500"/>
+                                </div>
+                                <button onClick={addTask} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700">Erstellen</button>
+                            </div>
+                        </Modal>
+                    )}
                 </div>
             );
         };
+
+        const BriefcaseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>;
+
+        // ==========================================
+        // 🏠 MAIN APP & MENU
+        // ==========================================
 
         const App = () => {
             const [user, setUser] = useState(null);
             const [view, setView] = useState('login');
             const [currentRoom, setCurrentRoom] = useState(localStorage.getItem('lastRoom'));
             const [joinCode, setJoinCode] = useState("");
+            const [loading, setLoading] = useState(true);
+            const [communityRooms, setCommunityRooms] = useState([]);
 
-            useEffect(() => onAuthStateChanged(auth, u => { setUser(u); setView(u ? 'menu' : 'login'); }), []);
+            useEffect(() => onAuthStateChanged(auth, u => { setUser(u); setView(u ? 'menu' : 'login'); setLoading(false); }), []);
+
+            const loadCommunity = async () => {
+                const q = query(collection(db, "rooms"), orderBy("likes", "desc"), limit(20));
+                const snap = await getDocs(q);
+                setCommunityRooms(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                setView('community');
+            };
 
             const handleCreate = async () => {
                 const code = Math.random().toString(36).substring(2, 7).toUpperCase();
                 await setDoc(doc(db, 'rooms', code), { 
-                    roomName: "Mein Garten", owner: user.uid, createdAt: new Date().toISOString(), 
-                    inventory: { carrot_seed: 2 }, coins: 50, gems: 0, gardens: {0:{}}, unlockedGardens: [0] 
+                    roomName: `${user.displayName}'s Garten`, owner: user.uid, createdAt: new Date().toISOString(), 
+                    inventory: { carrot_seed: 2 }, coins: 50, gems: 0, gardens: {0:{}}, unlockedGardens: [0],
+                    tasks: [], likes: 0, currentStreak: 0, lastStreakDate: ''
                 });
                 enterRoom(code);
             };
 
-            const enterRoom = (code) => { localStorage.setItem('lastRoom', code); setCurrentRoom(code); setView('game'); };
+            const enterRoom = (code, spectator = false) => { 
+                if(!spectator) localStorage.setItem('lastRoom', code); 
+                setCurrentRoom(code); 
+                // Pass spectator prop down if needed, currently reusing game logic
+                setView(spectator ? 'spectate' : 'game'); 
+            };
+
+            if (loading) return <div className="h-full flex items-center justify-center bg-slate-50 text-green-600"><Loader2 className="animate-spin mr-2"/></div>;
 
             if (view === 'login') return (
-                <div className="h-full flex flex-col items-center justify-center bg-green-100">
-                    <button onClick={() => signInWithPopup(auth, googleProvider)} className="bg-white p-4 rounded-xl font-bold shadow-xl">Mit Google anmelden</button>
+                <div className="h-full flex flex-col items-center justify-center bg-green-50 p-6">
+                    <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm text-center">
+                        <h1 className="text-4xl font-black text-green-600 mb-2">DuoBloom</h1>
+                        <p className="text-gray-500 mb-8">Dein sozialer Gärtner-Spaß</p>
+                        <button onClick={() => signInWithPopup(auth, new GoogleAuthProvider())} className="w-full bg-white border-2 border-gray-200 hover:border-green-500 text-gray-700 font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all">
+                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" />
+                            Mit Google starten
+                        </button>
+                    </div>
                 </div>
             );
 
             if (view === 'menu') return (
                 <div className="h-full bg-slate-100 flex items-center justify-center p-4">
-                     <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md space-y-4">
-                        <h2 className="text-xl font-bold text-center">Hallo, {user.displayName}!</h2>
-                        {currentRoom && <button onClick={() => enterRoom(currentRoom)} className="w-full bg-green-100 text-green-800 p-4 rounded-xl font-bold flex justify-between"><span>Weiter: {currentRoom}</span> <Play size={20}/></button>}
-                        <button onClick={handleCreate} className="w-full bg-blue-500 text-white p-4 rounded-xl font-bold flex justify-center gap-2"><PlusSquare/> Neuer Garten</button>
-                        <div className="flex gap-2">
-                            <input value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} placeholder="CODE" className="flex-1 bg-gray-100 rounded-xl px-4 font-bold" />
-                            <button onClick={() => joinCode && enterRoom(joinCode)} className="bg-gray-800 text-white px-6 rounded-xl"><ArrowRight/></button>
+                     <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md space-y-6">
+                        <div className="flex items-center gap-4 border-b pb-6">
+                            <img src={user.photoURL} className="w-16 h-16 rounded-full border-4 border-green-100"/>
+                            <div>
+                                <h2 className="text-xl font-bold">Hallo, {user.displayName}!</h2>
+                                <button onClick={() => signOut(auth)} className="text-xs text-red-400 hover:underline">Abmelden</button>
+                            </div>
                         </div>
-                        <button onClick={() => signOut(auth)} className="text-gray-400 text-sm w-full text-center">Logout</button>
+
+                        {currentRoom && (
+                            <button onClick={() => enterRoom(currentRoom)} className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white p-5 rounded-2xl font-bold flex justify-between items-center shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02]">
+                                <div className="text-left">
+                                    <div className="text-xs uppercase opacity-80 mb-1">Letzter Garten</div>
+                                    <div className="text-xl">{currentRoom}</div>
+                                </div>
+                                <div className="bg-white/20 p-2 rounded-full"><Play fill="currentColor" size={24}/></div>
+                            </button>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <button onClick={handleCreate} className="bg-blue-50 border-2 border-blue-100 hover:border-blue-300 text-blue-700 p-4 rounded-2xl font-bold flex flex-col items-center gap-2 transition-all">
+                                <PlusSquare size={32}/> Neuer Garten
+                            </button>
+                            <button onClick={loadCommunity} className="bg-purple-50 border-2 border-purple-100 hover:border-purple-300 text-purple-700 p-4 rounded-2xl font-bold flex flex-col items-center gap-2 transition-all">
+                                <Globe size={32} /> Community
+                            </button>
+                        </div>
+
+                        <div className="bg-gray-50 p-4 rounded-2xl flex items-center gap-2 border border-gray-100">
+                            <input value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} placeholder="CODE EINGEBEN" className="flex-1 bg-white border rounded-xl px-4 py-3 font-bold uppercase outline-none focus:ring-2 ring-green-500" />
+                            <button onClick={() => joinCode && enterRoom(joinCode)} className="bg-gray-800 text-white p-3 rounded-xl hover:bg-black"><ArrowRight/></button>
+                        </div>
                      </div>
                 </div>
             );
 
-            return <GameApp user={user} roomCode={currentRoom} onBackToMenu={() => setView('menu')} />;
+            if (view === 'community') return (
+                <div className="h-full bg-slate-50 flex flex-col md:max-w-4xl md:mx-auto md:my-8 md:rounded-3xl shadow-xl overflow-hidden">
+                    <div className="p-6 bg-white shadow-sm flex items-center gap-4">
+                        <button onClick={() => setView('menu')} className="p-2 hover:bg-gray-100 rounded-full"><Home className="text-gray-600"/></button>
+                        <h2 className="text-2xl font-bold text-gray-800">Community</h2>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {communityRooms.map(r => (
+                            <div key={r.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex justify-between items-center hover:shadow-md transition-shadow">
+                                <div>
+                                    <div className="font-bold text-lg">{r.roomName}</div>
+                                    <div className="text-sm text-gray-500">Level {r.unlockedGardens?.length} • {r.likes || 0} Likes</div>
+                                </div>
+                                <button onClick={() => enterRoom(r.id, true)} className="bg-purple-100 text-purple-700 px-4 py-2 rounded-xl font-bold text-sm">Besuchen</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+
+            return <GameApp user={user} roomCode={currentRoom} isSpectator={view === 'spectate'} onBackToMenu={() => setView('menu')} />;
         };
+
+        // --- Globe Icon for Community ---
+        const Globe = ({size}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>;
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
     
-    <!-- PWA Service Worker Registration -->
+    <!-- PWA Helper -->
     <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js')
-                .then(() => console.log('Service Worker Registered'))
-                .catch(err => console.log('SW Failed', err));
-        }
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
     </script>
 </body>
 </html>

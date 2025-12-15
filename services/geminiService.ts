@@ -3,9 +3,9 @@ import { GoogleGenAI, Chat } from "@google/genai";
 let chatSession: Chat | null = null;
 
 export const initializeOctoChat = (userName: string) => {
-    // API KEY MUST BE IN ENVIRONMENT VARIABLE
-    if (!process.env.API_KEY) {
-        console.error("Gemini API Key is missing!");
+    // Check if key is missing or is still the default placeholder
+    if (!process.env.API_KEY || process.env.API_KEY.includes('YOUR_GEMINI_API_KEY')) {
+        console.error("Gemini API Key is invalid or missing!");
         return null;
     }
 
@@ -27,7 +27,7 @@ export const initializeOctoChat = (userName: string) => {
 
 export const sendMessageToOcto = async (message: string): Promise<string> => {
     if (!chatSession) {
-        return "Octo schläft gerade... (Fehler: Chat nicht initialisiert oder kein API Key)";
+        return "Octo schläft... (API Key prüfen! Ist er in der .env Datei gesetzt?) 🐙";
     }
 
     try {
@@ -35,6 +35,6 @@ export const sendMessageToOcto = async (message: string): Promise<string> => {
         return response.text || "Blub? (Ich habe keine Antwort)";
     } catch (error) {
         console.error("Octo Error:", error);
-        return "Blub blub... mein Gehirn hat einen Knoten. Versuchs später nochmal! 🐙";
+        return "Blub blub... mein Gehirn hat einen Knoten. (API Fehler) 🐙";
     }
 };

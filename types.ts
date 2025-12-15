@@ -35,6 +35,7 @@ export interface Task {
 export interface RoomData {
     roomName: string;
     owner: string;
+    ownerName?: string;
     users: string[];
     tasks: Task[];
     inventory: Record<string, number>;
@@ -45,6 +46,7 @@ export interface RoomData {
     likes: number;
     lastStreakDate?: string;
     currentStreak?: number;
+    createdAt?: string;
 }
 
 export interface ChatMessage {

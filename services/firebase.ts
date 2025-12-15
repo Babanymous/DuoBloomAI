@@ -1,6 +1,6 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore, Firestore } from "firebase/firestore";
-import { getAuth, Auth, GoogleAuthProvider } from "firebase/auth";
+import firebase from "firebase/app";
+import "firebase/auth";
+import "firebase/firestore";
 
 // NOTE: In a real environment, use process.env.REACT_APP_FIREBASE_API_KEY etc.
 // For this specific request, we are maintaining the structure but you MUST ensure
@@ -15,16 +15,12 @@ const firebaseConfig = {
     measurementId: "G-Z0W0LK6D88"
 };
 
-let app;
-let auth: Auth;
-let db: Firestore;
-
-try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-} catch (e) {
-    console.error("Firebase Init Error", e);
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
 }
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+const GoogleAuthProvider = firebase.auth.GoogleAuthProvider;
 
 export { auth, db, GoogleAuthProvider };

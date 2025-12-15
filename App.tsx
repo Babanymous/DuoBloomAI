@@ -1,10 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, User, signInWithPopup, signOut } from "firebase/auth";
-import { 
-    getDoc, setDoc, doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, 
-    increment, deleteField, collection, query, limit, getDocs, Timestamp 
-} from "firebase/firestore";
+import firebase from 'firebase/app';
 import { auth, db, GoogleAuthProvider } from './services/firebase';
 import { LogOut, Home, Play, Plus, ArrowRight, Globe, Download, Loader2, Share, Heart, PlusSquare, Castle, Store, CheckSquare, Flower2, ShoppingCart, Trash2, Check, Repeat, Calendar } from 'lucide-react';
 import OctoChat from './components/OctoChat';
@@ -28,7 +24,7 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => (
     </div>
 );
 
-const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, roomCode: string, isSpectator: boolean, onBackToMenu: () => void }) => {
+const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: firebase.User, roomCode: string, isSpectator: boolean, onBackToMenu: () => void }) => {
     const [roomData, setRoomData] = useState<RoomData | null>(null);
     const [tab, setTab] = useState<'garden' | 'tasks' | 'shop'>('garden');
     const [activeGardenIdx, setActiveGardenIdx] = useState(0);
@@ -39,8 +35,8 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
     // Data Sync
     useEffect(() => {
         if(!roomCode || !db) return;
-        const unsub = onSnapshot(doc(db, 'rooms', roomCode), (snap) => {
-            if (snap.exists()) {
+        const unsub = db.collection('rooms').doc(roomCode).onSnapshot((snap) => {
+            if (snap.exists) {
                 const data = snap.data() as RoomData;
                 // Defaults
                 if(!data.tasks) data.tasks = [];
@@ -69,8 +65,10 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
         const key = `${x},${y}`;
         const currentGrid = roomData.gardens[activeGardenIdx] || {};
         const cell = currentGrid[key] || {};
-        const roomRef = doc(db, 'rooms', roomCode);
+        const roomRef = db.collection('rooms').doc(roomCode);
         const path = `gardens.${activeGardenIdx}.${key}`;
+        const increment = firebase.firestore.FieldValue.increment;
+        const deleteField = firebase.firestore.FieldValue.delete;
 
         // Planting/Placing
         if (selectedItem) {
@@ -79,16 +77,16 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
             if (invCount > 0) {
                 if (itemDef.type === 'floor') { 
                     if (cell.item) return alert("Erst Pflanze entfernen!"); 
-                    await updateDoc(roomRef, { [`${path}.floor`]: selectedItem, [`inventory.${selectedItem}`]: increment(-1) }); 
+                    await roomRef.update({ [`${path}.floor`]: selectedItem, [`inventory.${selectedItem}`]: increment(-1) }); 
                 } else if (itemDef.type === 'seed' && !cell.floor && !cell.item) {
-                    await updateDoc(roomRef, { 
+                    await roomRef.update({ 
                         [`${path}.item`]: selectedItem, 
                         [`${path}.stage`]: 0, 
                         [`${path}.plantedAt`]: new Date().toISOString(), 
                         [`inventory.${selectedItem}`]: increment(-1) 
                     });
                 } else if (itemDef.type === 'deco' && !cell.item) {
-                     await updateDoc(roomRef, { [`${path}.item`]: selectedItem, [`inventory.${selectedItem}`]: increment(-1) }); 
+                     await roomRef.update({ [`${path}.item`]: selectedItem, [`inventory.${selectedItem}`]: increment(-1) }); 
                 }
                 if (invCount - 1 <= 0) setSelectedItem(null);
             }
@@ -101,7 +99,7 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
             if(!itemDef) return; 
             
             if (cell.grown && itemDef.type === 'seed') { 
-                await updateDoc(roomRef, { 
+                await roomRef.update({ 
                     [`${path}.item`]: deleteField(), 
                     [`${path}.stage`]: deleteField(), 
                     [`${path}.grown`]: deleteField(), 
@@ -111,7 +109,7 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
                 const lastWatered = cell.lastWatered ? new Date(cell.lastWatered).getTime() : 0; 
                 if (now - lastWatered > WATER_COOLDOWN) { 
                     const newStage = (cell.stage || 0) + 1; 
-                    await updateDoc(roomRef, { 
+                    await roomRef.update({ 
                         [`${path}.stage`]: newStage, 
                         [`${path}.grown`]: newStage >= (itemDef.stages || 1), 
                         [`${path}.lastWatered`]: new Date().toISOString() 
@@ -119,7 +117,7 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
                 } 
             } else if (itemDef.type === 'deco') { 
                 if(confirm(`${itemDef.name} ins Inventar zurück?`)) { 
-                    await updateDoc(roomRef, { [`${path}.item`]: deleteField(), [`inventory.${cell.item}`]: increment(1) }); 
+                    await roomRef.update({ [`${path}.item`]: deleteField(), [`inventory.${cell.item}`]: increment(1) }); 
                 } 
             }
             return;
@@ -129,22 +127,25 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
         if (cell.floor) { 
             const floorDef = ITEMS[cell.floor]; 
             if(confirm(`${floorDef.name} aufheben?`)) { 
-                await updateDoc(roomRef, { [`${path}.floor`]: deleteField(), [`inventory.${cell.floor}`]: increment(1) }); 
+                await roomRef.update({ [`${path}.floor`]: deleteField(), [`inventory.${cell.floor}`]: increment(1) }); 
             } 
         }
     };
 
     const buy = async (id: string, isGarden: boolean) => { 
         if (isSpectator || !roomData) return; 
+        const increment = firebase.firestore.FieldValue.increment;
+        const arrayUnion = firebase.firestore.FieldValue.arrayUnion;
+
         if(isGarden) { 
             const g = GARDEN_UPGRADES.find(x => x.id === parseInt(id)); 
             if(g && roomData.gems >= g.price) {
-                await updateDoc(doc(db, 'rooms', roomCode), { gems: increment(-g.price), unlockedGardens: arrayUnion(parseInt(id)), [`gardens.${id}`]: {} });
+                await db.collection('rooms').doc(roomCode).update({ gems: increment(-g.price), unlockedGardens: arrayUnion(parseInt(id)), [`gardens.${id}`]: {} });
             }
         } else { 
             const item = ITEMS[id]; 
             if (roomData.coins >= item.price) {
-                await updateDoc(doc(db, 'rooms', roomCode), { coins: increment(-item.price), [`inventory.${id}`]: increment(1) }); 
+                await db.collection('rooms').doc(roomCode).update({ coins: increment(-item.price), [`inventory.${id}`]: increment(1) }); 
             }
         } 
     };
@@ -251,7 +252,7 @@ const GameApp = ({ user, roomCode, isSpectator, onBackToMenu }: { user: User, ro
 // --- MAIN APP ---
 
 const App = () => {
-    const [user, setUser] = useState<User | null>(null);
+    const [user, setUser] = useState<firebase.User | null>(null);
     const [loading, setLoading] = useState(true);
     const [view, setView] = useState<'login' | 'menu' | 'community' | 'game'>('login');
     const [currentRoom, setCurrentRoom] = useState<string | null>(localStorage.getItem('lastRoom') || null);
@@ -259,7 +260,7 @@ const App = () => {
     const [joinCode, setJoinCode] = useState("");
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (u) => {
+        const unsub = auth.onAuthStateChanged((u) => {
             setUser(u);
             setLoading(false);
             if (u) setView('menu');
@@ -269,14 +270,14 @@ const App = () => {
     }, []);
 
     const handleLogin = async () => { 
-        try { await signInWithPopup(auth, new GoogleAuthProvider()); } 
+        try { await auth.signInWithPopup(new GoogleAuthProvider()); } 
         catch (e: any) { alert("Login fehlgeschlagen: " + e.message); } 
     };
 
     const handleCreate = async () => {
         if(!user) return;
         const newCode = Math.random().toString(36).substring(2, 7).toUpperCase();
-        await setDoc(doc(db, 'rooms', newCode), { 
+        await db.collection('rooms').doc(newCode).set({ 
             roomName: "Mein Garten", 
             owner: user.uid, 
             ownerName: user.displayName, 

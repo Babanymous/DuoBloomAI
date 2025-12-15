@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User } from 'firebase/auth';
+import firebase from 'firebase/app';
 import { RoomData, ChatMessage } from '../types';
 import { initializeOctoChat, sendMessageToOcto } from '../services/geminiService';
 import { Send, X } from 'lucide-react';
 
 interface OctoChatProps {
-    user: User;
+    user: firebase.User;
     roomData: RoomData | null;
 }
 
